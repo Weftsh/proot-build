@@ -1,0 +1,45 @@
+# Builds the static PRoot for linux/amd64 and linux/arm64 and pushes one
+# multi-platform image to ghcr.io/weftsh/proot. The arm64 half is built
+# under QEMU on the hosted runner; a static PRoot compiles in about a
+# minute natively and a few under emulation.
+name: build
+on:
+  push:
+    branches: [main]
+    paths: [PROOT_COMMIT, Dockerfile, fchmodat2.patch, .github/workflows/build.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build both architectures and push one image
+        run: |
+          commit="$(tr -d '[:space:]' < PROOT_COMMIT)"
+          tag="ghcr.io/weftsh/proot:${commit}-fchmodat2"
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            --build-arg "PROOT_COMMIT=${commit}" \
+            --tag "$tag" --push .
+          docker buildx imagetools inspect "$tag"
+      - name: The amd64 binary extracts a nested tarball under fake root
+        run: |
+          commit="$(tr -d '[:space:]' < PROOT_COMMIT)"
+          tag="ghcr.io/weftsh/proot:${commit}-fchmodat2"
+          docker create --platform linux/amd64 --name p "$tag" /proot >/dev/null
+          docker cp p:/proot ./proot-amd64 && docker rm p >/dev/null
+          docker run --rm --platform linux/amd64 --cap-add SYS_PTRACE -v "$PWD/proot-amd64:/usr/local/bin/proot:ro" ubuntu:24.04 bash -c '
+            set -e; tar --version | head -1
+            mkdir -p /t/x/y && echo hi > /t/x/y/f && tar czf /small.tgz -C /t . && rm -rf /t
+            mkdir /w && cd /w
+            proot -0 -r / -w /w tar xzf /small.tgz
+            test -f /w/x/y/f && echo "nested tarball extracted under fake root"'
