@@ -35,8 +35,8 @@ jobs:
         run: |
           commit="$(tr -d '[:space:]' < PROOT_COMMIT)"
           tag="ghcr.io/weftsh/proot:${commit}-fchmodat2"
-          docker create --platform linux/amd64 --name p "$tag" /proot >/dev/null
-          docker cp p:/proot ./proot-amd64 && docker rm p >/dev/null
+          docker create --platform linux/amd64 --name pr "$tag" /proot >/dev/null
+          docker cp pr:/proot ./proot-amd64 && docker rm pr >/dev/null
           docker run --rm --platform linux/amd64 --cap-add SYS_PTRACE -v "$PWD/proot-amd64:/usr/local/bin/proot:ro" ubuntu:24.04 bash -c '
             set -e; tar --version | head -1
             mkdir -p /t/x/y && echo hi > /t/x/y/f && tar czf /small.tgz -C /t . && rm -rf /t
